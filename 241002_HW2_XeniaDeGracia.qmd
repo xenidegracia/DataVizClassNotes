@@ -1,0 +1,498 @@
+---
+title: "Homework 2"
+author: "Xenia De Gracia"
+date: "Wednesday, October 02, 2024"
+format:
+  html:
+    code-tools: true
+    code-overflow: wrap
+    code-line-numbers: true
+    embed-resources: true
+  pdf: default
+  docx: default
+editor: visual
+code-annotations: hover
+execute:
+  warning: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+# HW#2 Fall 2024 - INFO 526
+
+## Student: Xenia De Gracia Medina
+
+## Due date: October 02, 2024
+
+```{r eval=FALSE, warning=FALSE, message=FALSE}
+#| label: load-packages
+
+#NOTE: please update this path at your convenience
+data_path = "C:/Users/xeniadegracia/OneDrive - University of Arizona/phd/2024-Fall/DataViz/HW/HW2/"
+
+if(!require('ggridges'))
+  install.packages('ggridges')
+if(!require('fs'))
+  install.packages('fs')
+if(!require('dplyr'))
+  install.packages('dplyr')
+if(!require('readr'))
+  install.packages('readr')
+if(!require('janitor'))
+  install.packages('janitor')
+if(!require('palmerpenguins'))
+  install.packages('palmerpenguins')
+library(lubridate)
+library(ggplot2)
+library(ggridges)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(ggforce)
+library(grid)
+library(readr)
+library(fs)
+```
+
+## Question #1: A new day, a new plot, a new geom
+
+#### Loading the dataset
+
+```{r warning=FALSE, message=FALSE}
+#| label: load-dataset
+
+# Load the dataset.
+load(file = paste0(data_path,"edibnb.rda"))
+
+# Display the structure of the loaded dataset
+str(edibnb)
+
+#| label: data-preprocessing
+#Removing rows with missing neighborhood or scores
+edibnb_clean <- edibnb %>%
+  filter(!is.na(neighbourhood), !is.na(review_scores_rating))
+
+#Calculating the median of the review scores by neighborhood and reordering them
+edibnb_clean <- edibnb_clean %>%
+  group_by(neighbourhood) %>%
+  mutate(median_review = median(review_scores_rating, na.rm = TRUE)) %>%
+  ungroup() %>%
+  arrange(median_review) %>%
+  mutate(neighbourhood = factor(neighbourhood, levels = unique(neighbourhood)))
+
+#Creating the ridgeline plot without varying fill aesthetic
+ggplot(edibnb_clean, aes(x = review_scores_rating, y = neighbourhood)) +
+  geom_density_ridges(scale = 2, fill = "lightblue", color = "black") +
+  geom_segment(aes(x = median_review, xend = median_review, y = as.numeric(neighbourhood) - 0.8, 
+                   yend = as.numeric(neighbourhood)), 
+               color = "red", linetype = "dotted", size = 0.8) +
+  labs(title = "Airbnb Review Scores of Edinburgh Neighborhood",
+       x = "Review Scores", y = "Neighborhood") +
+  theme_minimal()
+
+```
+
+#### Interpretation:
+
+*`The neighborhoods in general have very similar ranking review scores, almost all their review scores is close to 90, which is almost perfect score. This all means that Edinburgh is a place where you can rent an Airbnb with plenty of confidence you will have a good experience.`*
+
+## Question #2: Foreign Connected PACs
+
+#### Data pre-processing
+
+```{r warning=FALSE, message=FALSE}
+#| label: data-preprocessing
+#list of files with "Foreign Connected PAC" in their names
+list_of_files <- dir_ls(path = "data", regexp = "Foreign Connected PAC")
+#read all files and row bind them
+#keeping track of the file name in a new column called year
+pac <- read_csv(list_of_files, id = "year")
+#checking the structure of the data to start manipulating it
+str(pac)
+#cleaning the names with clean_names() function
+pac = clean_names(pac)
+
+#Check the column names to verify the cleaned names
+print(names(pac))  # Check the exact names after clean_names
+
+
+# Shaping the dataset
+pac_clean <- pac %>%
+  #removing the 'total' column
+  select(-total) %>%
+  #converting columns to numeric by removing dollar signs and commas
+  mutate(dems = as.numeric(gsub("[$,]", "", dems)),
+         repubs = as.numeric(gsub("[$,]", "", repubs))) %>%
+  # Remove all non-numeric characters from the "year" column
+  mutate(year = as.numeric(substr(gsub("[^0-9]", "", year), nchar(gsub("[^0-9]", "", year)) - 3, nchar(gsub("[^0-9]", "", year))))) %>%
+  # Separate the "country_of_origin_parent_company" column into two new columns
+  separate(country_of_origin_parent_company, 
+           into = c("country_of_origin", "parent_company"), 
+           sep = "/") %>%
+  # Trim any extra white space in the newly created columns
+  mutate(country_of_origin = trimws(country_of_origin),
+         parent_company = trimws(parent_company))
+
+#check the new clean data
+head(pac_clean)
+
+
+# Pivot data longer
+pac_long <- pac_clean %>%
+  pivot_longer(cols = c(dems, repubs), 
+               names_to = "party", 
+               values_to = "amount") %>%
+  # Recode party names to be more readable
+  mutate(party = recode(party, "dems" = "Democrat", "repubs" = "Republican"))
+
+
+# Filter for UK contributions
+pac_uk_summary <- pac_long %>%
+  filter(country_of_origin == "UK") %>%
+  group_by(year, party) %>%
+  summarise(total_amount = sum(amount, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+#### Plotting UK contribution data
+
+```{r warning=FALSE, message=FALSE}
+#| label: plotting-UK-data
+# Line plot
+ggplot(pac_uk_summary, aes(x = year, y = total_amount, color = party, group = party)) +
+  geom_line(linewidth = 1) +
+  scale_y_continuous(labels = scales::dollar_format(scale = 1e-6, suffix = "M")) +
+  # Adjusting y-axis to show in millions
+  labs(title = "Contributions to US Political Parties from UK-connected PACs",
+       x = "Year", y = "Total amount",
+       color = "Party",
+       caption = "Source: OpenSecrets.org") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0, size = 11),  # Left-align title
+    plot.caption = element_text(hjust = 1, size = 7),
+    legend.text = element_text(size = 7),
+    legend.position = c(0.9, 0.15),  # Position legend inside right-bottom
+    legend.title =  element_text(size = 9),  # Change the size of legend text
+    axis.title.x = element_text(size=8, vjust = 0.01, hjust = 0),  # Move x-axis title closer to the lower-left corner
+    axis.title.y = element_text(size=8, angle = 90, vjust = 3, hjust = 0.01)  # Move y-axis title closer to the lower-left corner
+  ) +
+  scale_color_manual(values = c("Democrat" = "blue", "Republican" = "red"))
+```
+
+#### Interpretation:
+
+*`As we can`* `perceive from the plot, the UK has supported the Republican party since 2000; however, in 2010, there was a switch of party, and they donated much more to Democrats than Republicans. The donations to republicans are as twice as significant to the ones given to democrats.`
+
+#### Looking for the second-biggest contributor
+
+```{r warning=FALSE, message=FALSE}
+#| label: looking-2nd-bigger-contributor
+# Summary of total contributions by country
+country_contributions <- pac_clean %>%
+  pivot_longer(cols = c(dems, repubs), 
+               names_to = "party", 
+               values_to = "amount") %>%
+  group_by(country_of_origin) %>%
+  summarise(total_contribution = sum(amount, na.rm = TRUE)) %>%
+  arrange(desc(total_contribution))
+
+# So which one is the country with the second largest contribution?
+second_big_contributor <- country_contributions %>% slice(2)
+
+# View the top contributor and all contributions
+second_big_contributor
+country_contributions
+
+
+# Filter for Switzerland contributions
+pac_2nd_summary <- pac_clean %>%
+  pivot_longer(cols = c(dems, repubs), 
+               names_to = "party", 
+               values_to = "amount") %>%
+  mutate(party = recode(party, "dems" = "Democrat", "repubs" = "Republican")) %>%
+  filter(country_of_origin == "Switzerland") %>%
+  group_by(year, party) %>%
+  summarise(total_amount = sum(amount, na.rm = TRUE)) %>%
+  ungroup()
+
+```
+
+#### Plotting Switzerland contribution data
+
+```{r warning=FALSE, message=FALSE}
+#| label: plotting-2nd-contributor-data
+# Line plot
+ggplot(pac_2nd_summary, aes(x = year, y = total_amount, color = party, group = party)) +
+  geom_line(linewidth = 1) +
+  scale_y_continuous(labels = scales::dollar_format(scale = 1e-6, suffix = "M")) +
+  # Adjusting y-axis to show in millions
+  labs(title = "Contributions to US Political Parties from Switzerland-connected PACs",
+       x = "Year", y = "Total amount",
+       color = "Party",
+       caption = "Source: OpenSecrets.org") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0, size = 11),  # Left-align title
+    plot.caption = element_text(hjust = 1, size = 7),
+    legend.text = element_text(size = 7),
+    legend.position = c(0.9, 0.15),  # Position legend inside right-bottom
+    legend.title =  element_text(size = 9),  # Change the size of legend text
+    axis.title.x = element_text(size=8, vjust = 0.01, hjust = 0),  # Move x-axis title closer to the lower-left corner
+    axis.title.y = element_text(size=8, angle = 90, vjust = 3, hjust = 0.01)  # Move y-axis title closer to the lower-left corner
+  ) +
+  scale_color_manual(values = c("Democrat" = "blue", "Republican" = "red"))
+```
+
+#### Interpretation:
+
+*`Similar to the UK, Switzerland has supported the Republican party since 2000. However, after 2023, there has been a switch to supporting more Democrats.`*
+
+## Question #3: Median housing prices in the US
+
+#### Preprocessing data
+
+```{r warning=FALSE, message=FALSE}
+#| label: loading-dataset
+
+median_housing = read_csv(paste0(data_path, "median-housing.csv"))
+recessions = read_csv(paste0(data_path, "recessions.csv"))
+
+# Renaming the columns in median_housing
+median_housing <- median_housing %>%
+  rename(date = DATE, price = MSPUS)
+
+# Make sure the columns Peak and Trough are in Date format
+recessions <- recessions %>%
+  mutate(Peak = as.Date(Peak),
+         Trough = as.Date(Trough))
+
+# Filter recessions to match the date range of the median_housing dataset
+recessions <- recessions %>%
+  mutate(is_in_timeframe = Peak >= min(median_housing$date) & Trough <= max(median_housing$date))
+
+```
+
+#### Median sales price of houses sold in the United States
+
+```{r warning=FALSE, message=FALSE}
+#| label: plotting-housing-data
+# Create the plot
+ggplot(data = median_housing, aes(x = date, y = price)) +
+  geom_line(color = "blue", size = 1) +  # Line plot with blue color and thicker line
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +  # Set x-axis to break every 5 years
+  scale_y_continuous(limits = c(0, 400000),  # Set y-axis limits from 0 to 400,000
+                     breaks = seq(0, 400000, by = 40000),  # Break every 40,000
+                     labels = label_number(scale = 1, big.mark = ",")) +
+  labs(title = "Median sales price of houses sold in the United States", 
+       subtitle = "Not seasonally adjusted",
+       x = NULL,  # No label for x-axis
+       y = "Dollars", 
+       caption = "Sources: Census; HUD") +  # Source information
+  theme_minimal() +  # Use minimal theme for clean look
+  theme(
+    plot.title = element_text(size = 14, hjust = 0),  # Center and adjust title size
+    plot.subtitle = element_text(size = 10, hjust = 0),  # Subtitle under the title
+    plot.caption = element_text(size = 8, hjust = 1),  # Right-align the caption
+    axis.title.y = element_text(size = 10),  # Adjust the y-axis title size
+    axis.text.x = element_text(size = 8),  # Adjust x-axis text size
+    axis.text.y = element_text(size = 8),  # Adjust y-axis text size
+    panel.grid.major.x = element_blank(),  # Remove major vertical grid lines
+    panel.grid.minor.x = element_blank(),   # Remove minor vertical grid lines
+    panel.grid.minor.y = element_blank()   # Remove minor vertical grid lines
+  )
+```
+
+#### Median sales price of houses sold in the United States during recessions
+
+```{r warning=FALSE, message=FALSE}
+#| label: plotting-recession-data
+# Create the plot for median housing prices with shaded recessions
+ggplot() +  # Start a blank ggplot
+  # Add the line plot for median housing prices
+  geom_line(data = median_housing, aes(x = date, y = price), color = "blue") +  
+  # Add shaded rectangles for recessions
+  geom_rect(data = recessions %>% filter(is_in_timeframe == TRUE),  
+            aes(xmin = Peak, xmax = Trough),  
+            ymin = -Inf, ymax = Inf,  # Set ymin and ymax globally
+            fill = "grey", alpha = 0.5) +  # Add shaded areas for recessions
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +  # Set x-axis to break every 5 years
+  scale_y_continuous(limits = c(0, 400000),  # Set y-axis limits from 0 to 400,000
+                     breaks = seq(0, 400000, by = 40000),  # Break every 40,000
+                     labels = label_number(scale = 1, big.mark = ",")) +
+  labs(title = "Median sales price of houses sold in the United States", 
+       subtitle = "Not seasonally adjusted",
+       x = NULL,  # No label for x-axis
+       y = "Dollars",
+      caption = "Shaded areas indicate U.S. recessions
+      Sources: Census; HUD") +  # Source information
+  theme_minimal() +  # Use a minimal theme
+  theme(
+    plot.title = element_text(size = 14, hjust = 0),  # Center and adjust title size
+    plot.subtitle = element_text(size = 10, hjust = 0),  # Subtitle under the title
+    plot.caption = element_text(size = 8, hjust = 1),  # Right-align the caption
+    axis.title.y = element_text(size = 10),  # Adjust the y-axis title size
+    axis.text.x = element_text(size = 8),  # Adjust x-axis text size
+    axis.text.y = element_text(size = 8),  # Adjust y-axis text size
+    panel.grid.major.x = element_blank(),  # Remove major vertical grid lines
+    panel.grid.minor.x = element_blank(),   # Remove minor vertical grid lines
+    panel.grid.minor.y = element_blank()   # Remove minor horizontal grid lines
+  )
+```
+
+#### 2019-2020 median sales price of houses sold in the United States
+
+```{r warning=FALSE, message=FALSE}
+#| label: plotting-2019-2020-data
+# Subset for 2019-2020
+housing_2019_2020 <- median_housing %>%
+  filter(year(date) >= 2019 & year(date) <= 2020) %>%
+  mutate(year = year(date), 
+         quarter = quarter(date))
+
+# Create a new column that combines quarter and year for labeling
+housing_2019_2020 <- housing_2019_2020 %>%
+  mutate(quarter_year_label = ifelse(quarter == 2, paste0("Q", quarter, "\n", year), paste0("Q", quarter)),
+         quarter_sequence = 4 * (year - min(year)) + quarter) # Create a continuous sequence for quarters
+
+x_limits <- range(housing_2019_2020$quarter_sequence)
+
+# Create the plot with continuous x-axis across years and customized x-axis labels
+ggplot(data = housing_2019_2020, aes(x = quarter_sequence, y = price)) +
+  geom_line(color = "blue", size = 1.1) +  # Line plot with blue color
+  geom_point(fill = "white", color = "blue", size = 2, shape = 21, stroke = 1) +  # White points with blue border
+  scale_x_continuous(breaks = housing_2019_2020$quarter_sequence,  # Continuous x-axis breaks based on the sequence
+                     labels = housing_2019_2020$quarter_year_label,
+                     limits = x_limits,  # Set the x-axis limits to ensure the border aligns with Q1 and Q4
+                     expand = c(0, 0)) +  # Prevent any extra spacing at the ends
+  scale_y_continuous(labels = label_number(scale = 1, big.mark = ","),
+                     limits = c(300000, 360000),  # Set y-axis limits from 0 to 400,000
+                     breaks = seq(300000, 360000, by = 20000),  # Break every 40,000 sign and comma-separated thousands
+                     expand = c(0, 0)) + # Set the y-axis limits to ensure the border aligns
+  labs(title = "Median sales price of houses sold in the United States", 
+       subtitle = "Not seasonally adjusted",
+       x = NULL,  # No label for x-axis
+       y = "Dollars") +
+  theme_minimal() +  # Use minimal theme for clean look
+  theme(
+    plot.title = element_text(size = 14, hjust = 0),  # Center and adjust title size
+    plot.subtitle = element_text(size = 12, hjust = 0),  # Subtitle under the title
+    axis.title.y = element_text(size = 12),  # Adjust the y-axis title size
+    axis.title.x = element_text(size = 12),  # Adjust the y-axis title size
+    axis.text.x = element_text(size = 10),  # Adjust x-axis text size
+    axis.text.y = element_text(size = 10),  # Adjust y-axis text size
+    panel.border = element_rect(color = "lightgrey", fill = NA, size = 0.5),  # Add a black border around the plot area
+    panel.grid.minor.x = element_blank()   # Remove minor vertical grid lines
+  )
+
+```
+
+## Question #4: Expect More. Plot More.
+
+```{r warning=FALSE, message=FALSE}
+#| label: TARGET-plotting
+
+# Creating a dataset with circle centers and radius for the Target logo
+target_logo <- tibble(
+  x = c(0, 0, 0),  # All circles are centered at (0,0)
+  y = c(0, 0, 0),
+  radius = c(5, 3, 1)  # radius of the outer, middle, and inner circles
+)
+
+# Target red color
+target_red <- "#CC0000"
+
+# Plotting the Target logo
+target_plot = ggplot(target_logo) +
+  geom_circle(aes(x0 = x, y0 = y, r = radius), color = target_red, fill = target_red) + #red big circle
+  geom_circle(aes(x0 = x, y0 = y, r = radius - 1.5), color = "white", fill = "white") + #inner white circle
+  geom_circle(aes(x0 = x, y0 = y, r = radius - 3), color = target_red, fill = target_red) + #red small circle
+  # Adding the text for "TARGET" with registered trademark symbol
+  annotate("text", x = 0, y = -6, label = "TARGET", color = target_red, size = 15, fontface = "bold") +
+  annotate("text", x = 3.8, y = -6.4, label = "\u00AE", color = target_red, size = 7, fontface = "bold") +  #trademark symbol
+  coord_fixed() +  # it fixes aspect ratio
+  theme_void()   #for the plot is square
+
+#saving the plot
+ggsave("target_logo_plot.png", plot = target_plot, width = 8, height = 8, units = "in")
+print(target_plot)
+```
+
+#### Approach used:
+
+1.  *`As the TARGET logo are 3 centered circles, that is what I started with.`*
+
+2.  *`Created the 3 circles with the same center but different radii.`*
+
+3.  *`Plotted the 3 circles, in the order I want them to be seen on the logo. (Big cycle first, for it to appear in the bottom of the logo, then the white medium circle, and then the red small circle on the cover of the logo.) For plotting the circles, I reduced the size of the radius so I could experiment with the sizes until I found ones that were similar to the TARGET original logo.`*
+
+4.  *`For the text of TARGET and the R trademark symbol, I needed to play a lot with the x and y coordinates to locate them in places similar to the original logo.`*
+
+5.  *`As I added the TARGET word and the R trademark, the circles of the logo started to look more like ovals, so I added the fix_aspect to create an aspect that doesnt modify the shape of the circles.`*
+
+## Question #5: Mirror, mirror on the wall, who’s the ugliest of them all?
+
+#### Descent plot for penguins dataset
+
+```{r warning=FALSE, message=FALSE}
+#| label: plotting-good-plot-penguins
+
+#checking the data structure
+str(penguins)
+
+# Filter out NA values for sex and year
+penguins_filtered <- penguins %>%
+  filter(!is.na(sex) & !is.na(year))
+
+# Nice plot with default theme and colors
+ggplot(penguins_filtered, aes(x = year, fill = sex)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ island) +
+  labs(title = "Number of Male and Female Penguins by Year and Island",
+       x = "Year",
+       y = "Count",
+       fill = "Sex")
+
+```
+
+#### Ugly plot of them all
+
+```{r warning=FALSE, message=FALSE}
+#| label: plotting-good-plot-penguins
+
+# Super ugly version of the plot
+ggplot(penguins_filtered, aes(x = year, fill = sex)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ island) +
+  labs(title = "NuMber of MalE and FemalE PenGuins by YeAr and IslaNd",
+       x = "YeArrrrr",
+       y = "Count",
+       fill = "Sex") +
+  theme_dark() +
+  theme(
+    axis.title.x = element_text(size = 4, color = "yellow", face = "italic", hjust = 0.9),
+    axis.title.y = element_text(size = 4, color = "purple", face = "bold", vjust = -1),
+    axis.text.x = element_text(angle = 90, size = 10, color = "green"),
+    axis.text.y = element_text(size = 8, color = "blue"),
+    plot.title = element_text(size = 30, color = "pink", face = "bold.italic", hjust = 0.1),
+    plot.title.position = 'panel',
+    legend.background = element_rect(fill = "red"),
+    legend.key = element_rect(fill = "orange"), #adding random colors to everything
+    strip.background = element_rect(fill = "black"),
+    strip.text = element_text(size = 12, color = "white", face = "bold"),
+    panel.grid.major = element_line(color = "purple", size = 2),
+    panel.grid.minor = element_line(color = "orange", size = 1)
+  )
+
+
+```
+
+## **Cited resources:**
+
+-   OpenAI. (2024). ChatGPT (October 2024 version).
+-   Grolemund, H. W. M. Ç. a. G. (n.d.). *7  Data import – R for Data Science (2e)*. https://r4ds.hadley.nz/data-import.html#data-entry
+-   Grolemund, H. W. M. Ç. a. G. (n.d.). *9 Layers – R for Data Science (2E)*. https://r4ds.hadley.nz/layers.html#facets
+-   Grolemund, H. W. M. Ç. a. G. (n.d.). *29  Quarto formats – R for Data Science (2e)*. https://r4ds.hadley.nz/quarto-formats
+-   

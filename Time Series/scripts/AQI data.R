@@ -20,12 +20,13 @@ library(broom)
 library(fs)
 
 #load data - data set is part of the zipped file
-tuc_2022 <- read_csv(here::here("data/tucson/ad_aqi_tracker_data-2022.csv"))
+path = "C:/Users/xeniadegracia/OneDrive - University of Arizona/phd/2024-Fall/DataViz/DataVizClassNotes/Time Series/scripts/data/tucson/ad_aqi_tracker_data-2022.csv"
+tuc_2022 <- read_csv(here::here(path))
 
 #Meta data 
-dim(tuc_2022)
+dim(tuc_2022) #dimensions of the table
 
-names(tuc_2022)
+names(tuc_2022) 
 
 #Clean the variable names 
 tuc_2022 <- tuc_2022 |>
@@ -33,13 +34,14 @@ tuc_2022 <- tuc_2022 |>
 
 names(tuc_2022)
 
-#Take a look 
+#Take a look at the plot
 ggplot(tuc_2022, aes(x = date, y = aqi_value, group = 1)) +
   geom_line()
 
 #Plot is wonky - let's take a look at the data 
 tuc_2022 |>
   select(date, aqi_value, site_name, site_id)
+#it was the date form
 
 #Transform the data - clean up date
 tuc_2022 |>
@@ -52,7 +54,7 @@ tuc_2022 |>
 
 #Start again, but 
 tuc_2022 <- read_csv(
-  here::here("data/tucson/ad_aqi_tracker_data-2022.csv"),
+  here::here(path),
   na = c(".", "")
 )
 
@@ -124,3 +126,12 @@ tuc_2022 |>
     panel.grid.minor.x = element_blank(),
     plot.margin = unit(c(1, 1, 3, 1), "lines")
   )
+
+aqi_levels_2 <- tribble(
+  ~aqi_min, ~aqi_max, ~color,    ~level,
+  0,        50,       "#D8EEDA", "Good",
+  51,       100,      "#F1E7D4", "Moderate",
+  101,      150,      "#F8E4D8", "Unhealthy for sensitive groups",
+  151,      200,      "#FEE2E1", "Unhealthy",
+  201,      300,      "#F4E3F7", "Very unhealthy",
+  301,      400,      "#F9D0D4", "Hazardous")
