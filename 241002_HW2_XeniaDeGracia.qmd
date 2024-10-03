@@ -32,6 +32,10 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 #NOTE: please update this path at your convenience
 data_path = "C:/Users/xeniadegracia/OneDrive - University of Arizona/phd/2024-Fall/DataViz/HW/HW2/"
 
+if(!require("quarto"))
+  install.packages("quarto")
+if(!require("tinytex"))
+  install.packages("tinytex")
 if(!require('ggridges'))
   install.packages('ggridges')
 if(!require('fs'))
@@ -44,6 +48,7 @@ if(!require('janitor'))
   install.packages('janitor')
 if(!require('palmerpenguins'))
   install.packages('palmerpenguins')
+library(tinytex)
 library(lubridate)
 library(ggplot2)
 library(ggridges)
@@ -496,3 +501,7 @@ ggplot(penguins_filtered, aes(x = year, fill = sex)) +
 -   Grolemund, H. W. M. Ç. a. G. (n.d.). *9 Layers – R for Data Science (2E)*. https://r4ds.hadley.nz/layers.html#facets
 -   Grolemund, H. W. M. Ç. a. G. (n.d.). *29  Quarto formats – R for Data Science (2e)*. https://r4ds.hadley.nz/quarto-formats
 -   
+
+``` {r warning=FALSE, message=FALSE}
+quarto::quarto_render("241002_HW2_XeniaDeGracia.qmd")
+```
